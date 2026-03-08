@@ -7,4 +7,5 @@ export interface Room {
     zoomLevel: string
     scrollPosition: number
     createdAt: string
+    roomPassword: string | null
 }
