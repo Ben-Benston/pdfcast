@@ -169,7 +169,11 @@ export default function Display() {
         >
             <Document
                 file={room.pdfUrl}
-                loading={<></>}
+                loading={
+                    <div className="h-screen w-screen bg-black flex items-center justify-center">
+                        <div className="w-10 h-10 border-4 border-gray-800 border-t-blue-500 rounded-full animate-spin" />
+                    </div>
+                }
             >
                 <Page
                     pageNumber={room.currentPage}
@@ -177,7 +181,14 @@ export default function Display() {
                     height={room.zoomLevel === 'fit' ? window.innerHeight : undefined}
                     renderTextLayer={false}
                     renderAnnotationLayer={false}
-                    loading={<></>}
+                    loading={<Page
+                        pageNumber={Math.max(room.currentPage - 1, 1)}
+                        width={room.zoomLevel !== 'fit' ? getPageWidth() : undefined}
+                        height={room.zoomLevel === 'fit' ? window.innerHeight : undefined}
+                        renderTextLayer={false}
+                        renderAnnotationLayer={false}
+                        loading={<></>}
+                    />}
                 />
             </Document>
         </div>
