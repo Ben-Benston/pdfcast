@@ -27,7 +27,15 @@ export default function Display() {
             navigate('/')
         }
     }, [])
-
+    
+useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+        if (e.key === 'Escape') navigate('/')
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+}, [])
+    
     useEffect(() => {
         fetchRoom()
         const channel = subscribeToRoom()
