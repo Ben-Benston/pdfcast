@@ -36,6 +36,17 @@ export default function Home() {
 
     async function handleCreateRoom() {
         if (!selectedFile) return
+
+        const { count } = await supabase
+            .from('rooms')
+            .select('*', { count: 'exact', head: true })
+
+        if (count && count >= 50) {
+            alert('Too many active rooms. Please try again later.')
+            setUploading(false)
+            return
+        }
+        
         setUploading(true)
         setProgress(10)
 
