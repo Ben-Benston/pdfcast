@@ -3,7 +3,8 @@ import type { Room } from '../types'
 export async function getActiveRoomsCount(): Promise<number> {
   const res = await fetch('/api/rooms', { method: 'GET' })
   if (!res.ok) {
-    throw new Error('Failed to fetch rooms count')
+    const errorData = await res.json().catch(() => ({}))
+    throw new Error(errorData.error || `Failed to fetch rooms count (HTTP ${res.status})`)
   }
   const data = await res.json()
   return data.count ?? 0

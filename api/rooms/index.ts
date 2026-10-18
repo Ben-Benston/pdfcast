@@ -25,17 +25,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     // GET /api/rooms - check active room count (and cleanup expired rooms)
     if (req.method === 'GET') {
-      // Auto-cleanup rooms older than 24 hours
-      const expiredRooms = await sql`
-        DELETE FROM rooms
-        WHERE "createdAt" < now() - interval '24 hours'
-        RETURNING "roomCode", "pdfName"
-      `
+      try {
+        const expiredRooms = await sql`
+          DELETE FROM rooms
+          WHERE "createdAt" < now() - interval '24 hours'
+          RETURNING "roomCode", "pdfName"
+        `
 
-      if (isObjectStorageConfigured() && expiredRooms.length > 0) {
-        for (const room of expiredRooms) {
-          await deleteFromStorage(`${room.roomCode}-${room.pdfName}`)
+        if (isObjectStorageConfigured() && expiredRooms.length > 0) {
+          for (const room of expiredRooms) {
+            deleteFromStorage(`${room.roomCode}-${room.pdfName}`).catch(() => {})
+          }
         }
+      } catch (cleanupErr) {
+        console.warn('Expired rooms cleanup warning (non-fatal):', cleanupErr)
       }
 
       const rows = await sql`
