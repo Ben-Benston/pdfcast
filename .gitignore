@@ -24,3 +24,6 @@ dist-ssr
 *.sw?
 
 .env
+.neon
+.agents/
+skills-lock.json

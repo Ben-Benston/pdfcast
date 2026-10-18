@@ -1,11 +1,10 @@
 # Relay PDF
 
-
-
 [![Live](https://img.shields.io/badge/live-relaypdf.vercel.app-blue)](https://relaypdf.vercel.app)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](https://github.com/Ben-Benston/pdfcast/blob/main/LICENSE)
 [![TypeScript](https://img.shields.io/badge/language-TypeScript-3178C6)](https://www.typescriptlang.org)
 [![React](https://img.shields.io/badge/framework-React-61DAFB)](https://react.dev)
+[![Neon](https://img.shields.io/badge/database-Neon_Postgres-00E599)](https://neon.tech)
 
 A real-time PDF display controller built for OBS and mosque/event livestreams.
 
@@ -22,7 +21,7 @@ No more walking up to a laptop to flip slides. Control everything remotely while
 1. **Create a Room** — upload a PDF and optionally set a room password
 2. **Open the Display** — paste the display URL into OBS as a Browser Source (or open on any screen)
 3. **Control remotely** — use your phone to change pages, zoom in/out, and scroll
-4. Changes sync instantly via Supabase Realtime
+4. Changes sync instantly to the display
 
 ---
 
@@ -35,7 +34,7 @@ No more walking up to a laptop to flip slides. Control everything remotely while
 - 📜 Remote scroll control
 - 📱 Mobile-friendly controller UI
 - 🖥️ Clean fullscreen display — no UI, no scrollbars
-- ♻️ Automatic cleanup of rooms and files after 24 hours
+- ♻️ Automatic cleanup of rooms and files after 24 hours (via Vercel Cron & Neon)
 - 🔁 Reconnect to previous room via localStorage
 
 ---
@@ -45,56 +44,59 @@ No more walking up to a laptop to flip slides. Control everything remotely while
 - **Frontend** — React + TypeScript + Vite
 - **Styling** — Tailwind CSS
 - **PDF Rendering** — PDF.js via react-pdf
-- **Backend** — Supabase (PostgreSQL + Realtime + Storage)
+- **Backend & Database** — Neon Serverless PostgreSQL (`@neondatabase/serverless`)
+- **API Runtime** — Vercel Serverless Functions (`/api`)
 - **Deployment** — Vercel
 
 ---
 
-## Usage with OBS
+## Setup & Deployment
 
-1. Go to [relaypdf.vercel.app](https://relaypdf.vercel.app)
-2. Click **Display** and enter your room code
-3. Copy the display URL
-4. In OBS, add a **Browser Source** and paste the URL
-5. Set width/height to match your canvas (e.g. 1920x1080)
-6. Control the display from your phone via the Controller
+### 1. Database Setup (Neon DB)
 
----
+1. Create a project on [Neon Console](https://console.neon.tech).
+2. Copy your **`DATABASE_URL`** connection string from the Neon dashboard.
+3. Add it to your `.env` file (and in your Vercel Project Settings under Environment Variables):
+   ```env
+   DATABASE_URL=postgresql://[user]:[password]@[endpoint].us-east-2.aws.neon.tech/[dbname]?sslmode=require
+   ```
+4. Run the database migrations:
+   ```bash
+   npm run db:migrate
+   ```
 
-## Local Development
+### 2. Local Development
 
 ```bash
 git clone https://github.com/Ben-Benston/pdfcast
 cd pdfcast
 npm install
-```
-
-Create a `.env` file:
-```
-VITE_SUPABASE_URL=your_supabase_url
-VITE_SUPABASE_PUBLISHABLE_DEFAULT_KEY=your_supabase_key
-```
-
-```bash
 npm run dev
 ```
+
+During local development, Vite serves both the React application and the `/api` backend endpoints on the same port using your local `DATABASE_URL`.
 
 ---
 
 ## Database Schema
 
 ```sql
-CREATE TABLE rooms (
+CREATE TABLE IF NOT EXISTS public.rooms (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  "roomCode" TEXT NOT NULL,
+  "roomCode" VARCHAR(6) UNIQUE NOT NULL,
   "pdfUrl" TEXT NOT NULL,
   "pdfName" TEXT NOT NULL,
-  "currentPage" INT DEFAULT 1,
-  "zoomLevel" TEXT DEFAULT 'fit',
-  "scrollPosition" INT DEFAULT 0,
+  "currentPage" INT NOT NULL DEFAULT 1,
+  "zoomLevel" VARCHAR(10) NOT NULL DEFAULT 'fit',
+  "scrollPosition" INT NOT NULL DEFAULT 0,
   "roomPassword" TEXT,
-  "createdAt" TIMESTAMPTZ DEFAULT now()
+  "pdfData" BYTEA,
+  "createdAt" TIMESTAMPTZ NOT NULL DEFAULT now(),
+  "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX IF NOT EXISTS idx_rooms_room_code ON public.rooms("roomCode");
+CREATE INDEX IF NOT EXISTS idx_rooms_created_at ON public.rooms("createdAt");
 ```
 
 ---

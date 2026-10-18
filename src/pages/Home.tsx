@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
-import supabase from '../utils/supabase'
+import { getActiveRoomsCount, createRoom } from '../utils/api'
 import { hashPassword } from '../utils/crypto'
 
 export default function Home() {
@@ -13,16 +13,13 @@ export default function Home() {
     const [displayRoomCode, setDisplayRoomCode] = useState('')
     const [controllerRoomCode, setControllerRoomCode] = useState('')
     const fileInputRef = useRef<HTMLInputElement>(null)
-    const [existingRoom, setExistingRoom] = useState<string | null>(null)
+    const [existingRoom, setExistingRoom] = useState<string | null>(() => {
+        return typeof window !== 'undefined' ? localStorage.getItem('roomCode') : null
+    })
     const [roomPassword, setRoomPassword] = useState('')
     const [showPassword, setShowPassword] = useState(false)
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const passwordInputRef = useRef<HTMLInputElement>(null)
-
-    useEffect(() => {
-        const saved = localStorage.getItem('roomCode')
-        if (saved) setExistingRoom(saved)
-    }, [])
 
     function generateRoomCode() {
         return Math.floor(100000 + Math.random() * 900000).toString()
@@ -37,57 +34,53 @@ export default function Home() {
     async function handleCreateRoom() {
         if (!selectedFile) return
 
-        const { count } = await supabase
-            .from('rooms')
-            .select('*', { count: 'exact', head: true })
-
-        if (count && count >= 50) {
-            alert('Too many active rooms. Please try again later.')
-            setUploading(false)
-            return
-        }
-        
-        setUploading(true)
-        setProgress(10)
-
-        const code = generateRoomCode()
-        const fileName = `${code}-${selectedFile.name}`
-
         try {
-            const { error: storageError } = await supabase.storage
-                .from('pdfs')
-                .upload(fileName, selectedFile)
+            const count = await getActiveRoomsCount()
+            if (count >= 50) {
+                alert('Too many active rooms. Please try again later.')
+                setUploading(false)
+                return
+            }
 
-            if (storageError) throw new Error(storageError.message)
+            setUploading(true)
+            setProgress(15)
 
+            const code = generateRoomCode()
+
+            // Convert PDF to base64
+            const reader = new FileReader()
+            const base64Promise = new Promise<string>((resolve, reject) => {
+                reader.onload = () => {
+                    const result = reader.result as string
+                    const base64 = result.includes(',') ? result.split(',')[1] : result
+                    resolve(base64)
+                }
+                reader.onerror = () => reject(new Error('Failed to read PDF file'))
+            })
+            reader.readAsDataURL(selectedFile)
+
+            const pdfBase64 = await base64Promise
             setProgress(60)
 
-            const { data: urlData } = supabase.storage
-                .from('pdfs')
-                .getPublicUrl(fileName)
-
+            const hashedPassword = roomPassword ? await hashPassword(roomPassword) : null
             setProgress(80)
 
-            const hashedPassword = roomPassword ? await hashPassword(roomPassword) : null
-
-            const { error: dbError } = await supabase.from('rooms').insert({
+            await createRoom({
                 roomCode: code,
-                pdfUrl: urlData.publicUrl,
                 pdfName: selectedFile.name,
                 roomPassword: hashedPassword,
+                pdfBase64,
             })
-
-            if (dbError) throw new Error(dbError.message)
 
             localStorage.setItem('roomCode', code)
             if (hashedPassword) localStorage.setItem(`password-${code}`, hashedPassword)
 
             setProgress(100)
             setTimeout(() => navigate(`/controller/${code}`), 500)
-
-        } catch (err) {
+        } catch (err: unknown) {
             console.error(err)
-            await supabase.storage.from('pdfs').remove([fileName])
+            const message = err instanceof Error ? err.message : 'Failed to create room. Please try again.'
+            alert(message)
             setUploading(false)
             setProgress(0)
         }

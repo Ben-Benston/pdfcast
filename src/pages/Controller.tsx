@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { Document, Page, pdfjs } from 'react-pdf'
-import supabase from '../utils/supabase'
+import { getRoom, updateRoom as apiUpdateRoom } from '../utils/api'
 import type { Room } from '../types/index'
 import { hashPassword } from '../utils/crypto'
 
@@ -20,51 +20,48 @@ export default function Controller() {
     const [passwordError, setPasswordError] = useState(false)
     const [showPassword, setShowPassword] = useState(false)
 
+    const isInvalid = !roomCode || !/^\d{6}$/.test(roomCode)
+
     useEffect(() => {
-        fetchRoom()
-    }, [])
+        if (isInvalid) return
 
-    async function checkAuth(fetchedRoom: Room) {
-        if (!fetchedRoom.roomPassword) {
-            setAuthorized(true)
-            return
-        }
-        const saved = localStorage.getItem(`password-${roomCode}`)
-        if (saved === fetchedRoom.roomPassword) {
-            setAuthorized(true)
-        }
-    }
+        let isCancelled = false
+        getRoom(roomCode)
+            .then(data => {
+                if (isCancelled) return
+                if (!data) {
+                    setError(true)
+                } else {
+                    setRoom(data)
+                    if (!data.roomPassword || localStorage.getItem(`password-${roomCode}`) === data.roomPassword) {
+                        setAuthorized(true)
+                    }
+                }
+            })
+            .catch(err => {
+                if (!isCancelled) {
+                    console.error(err)
+                    setError(true)
+                }
+            })
 
-    async function fetchRoom() {
-        if (!roomCode || !/^\d{6}$/.test(roomCode)) {
-            setError(true)
-            return
+        return () => {
+            isCancelled = true
         }
-
-        const { data, error } = await supabase
-            .from('rooms')
-            .select('*')
-            .eq('roomCode', roomCode)
-            .single()
-
-        if (error) console.error(error)
-        if (error || !data) setError(true)
-        else {
-            setRoom(data)
-            await checkAuth(data)
-        }
-    }
+    }, [roomCode, isInvalid])
 
     async function updateRoom(updates: Partial<Room>) {
-        await supabase
-            .from('rooms')
-            .update(updates)
-            .eq('roomCode', roomCode)
-
+        if (!roomCode) return
         setRoom(prev => prev ? { ...prev, ...updates } : prev)
+
+        try {
+            await apiUpdateRoom(roomCode, updates)
+        } catch (err) {
+            console.error('Failed to update room:', err)
+        }
     }
 
-    if (error) return (
+    if (isInvalid || error) return (
         <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-4">
             <a href="/"><h1 className="text-white text-4xl font-bold tracking-tight">Relay PDF</h1></a>
             <p className="text-red-400">Room not found.</p>

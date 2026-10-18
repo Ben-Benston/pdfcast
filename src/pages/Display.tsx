@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Document, Page, pdfjs } from 'react-pdf'
-import supabase from '../utils/supabase'
+import { getRoom } from '../utils/api'
 import type { Room } from '../types/index'
 import { hashPassword } from '../utils/crypto'
 
@@ -26,7 +26,7 @@ export default function Display() {
         if (/Mobi|Android/i.test(navigator.userAgent)) {
             navigate('/')
         }
-    }, [])
+    }, [navigate])
 
     useEffect(() => {
         function handleKeyDown(e: KeyboardEvent) {
@@ -34,13 +34,7 @@ export default function Display() {
         }
         window.addEventListener('keydown', handleKeyDown)
         return () => window.removeEventListener('keydown', handleKeyDown)
-    }, [])
-
-    useEffect(() => {
-        fetchRoom()
-        const channel = subscribeToRoom()
-        return () => { supabase.removeChannel(channel) }
-    }, [])
+    }, [navigate])
 
     async function checkAuth(fetchedRoom: Room) {
         if (!fetchedRoom.roomPassword) {
@@ -48,48 +42,57 @@ export default function Display() {
         }
     }
 
-    async function fetchRoom() {
-        if (!roomCode || !/^\d{6}$/.test(roomCode)) {
-            setError(true)
-            return
-        }
+    useEffect(() => {
+        let isMounted = true
+        let timeoutId: ReturnType<typeof setTimeout> | undefined
 
-        const { data, error } = await supabase
-            .from('rooms')
-            .select('*')
-            .eq('roomCode', roomCode)
-            .single()
+        async function pollRoom() {
+            if (!roomCode || !/^\d{6}$/.test(roomCode)) {
+                setError(true)
+                return
+            }
 
-        if (error) console.error(error)
-        if (error || !data) setError(true)
-        else {
-            setRoom(data)
-            setScrollPos(data.scrollPosition)
-            await checkAuth(data)
-        }
-    }
+            try {
+                const data = await getRoom(roomCode)
+                if (!isMounted) return
 
-    function subscribeToRoom() {
-        const channel = supabase
-            .channel(`room-${roomCode}`)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'rooms',
-                    filter: `roomCode=eq.${roomCode}`,
-                },
-                (payload) => {
-                    const updated = payload.new as Room
-                    setRoom(updated)
-                    setScrollPos(updated.scrollPosition)
+                if (!data) {
+                    setError(true)
+                    return
                 }
-            )
-            .subscribe()
 
-        return channel
-    }
+                setRoom(prev => {
+                    if (!prev) {
+                        checkAuth(data)
+                        setScrollPos(data.scrollPosition)
+                        return data
+                    }
+                    if (
+                        prev.currentPage !== data.currentPage ||
+                        prev.zoomLevel !== data.zoomLevel ||
+                        prev.scrollPosition !== data.scrollPosition
+                    ) {
+                        setScrollPos(data.scrollPosition)
+                        return data
+                    }
+                    return prev
+                })
+            } catch (err) {
+                console.error('Error syncing room:', err)
+            } finally {
+                if (isMounted) {
+                    timeoutId = setTimeout(pollRoom, 400)
+                }
+            }
+        }
+
+        pollRoom()
+
+        return () => {
+            isMounted = false
+            clearTimeout(timeoutId)
+        }
+    }, [roomCode])
 
     useEffect(() => {
         containerRef.current?.scrollTo({
