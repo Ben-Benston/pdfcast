@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getDb } from '../db'
-import { isObjectStorageConfigured, uploadToStorage, deleteFromStorage } from '../storage'
+import { getDb } from '../db.js'
+import { isObjectStorageConfigured, uploadToStorage, deleteFromStorage } from '../storage.js'
 
 export const config = {
   api: {

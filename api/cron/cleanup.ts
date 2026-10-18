@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { getDb } from '../db'
-import { isObjectStorageConfigured, deleteFromStorage } from '../storage'
+import { getDb } from '../db.js'
+import { isObjectStorageConfigured, deleteFromStorage } from '../storage.js'
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   // Optional security: verify CRON_SECRET if provided in environment
